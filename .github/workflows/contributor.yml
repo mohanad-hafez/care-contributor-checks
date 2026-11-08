@@ -1,0 +1,33 @@
+name: Contributor state
+on:
+  push:
+    branches: [replacement-contributor-gate-01]
+    paths: [.github/contributor-ready]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  inspect:
+    if: github.repository == 'mohanad-hafez/care-contributor-checks'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: node --test .github/contributor/contributor_gate.test.cjs
+      - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            const fs=require('fs'); const {decide}=require(process.env.GITHUB_WORKSPACE+'/.github/contributor/contributor_gate.cjs');
+            const response=await github.rest.pulls.get({...context.repo,pull_number:1});
+            if(response.data.state!=='closed'||response.data.merged!==false)throw Error('Controlled state changed');
+            const decision=decide(response.data);
+            if(decision.action!=='noop')throw Error('Expected source early exit');
+            fs.writeFileSync('contributor-result.json',JSON.stringify({decision,pull:{number:response.data.number,state:response.data.state,merged:response.data.merged,head:response.data.head.sha,comments:response.data.comments},api_reads:1,api_writes:0,model_calls:0},null,2));
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: contributor-result
+          path: contributor-result.json
+          retention-days: 14
